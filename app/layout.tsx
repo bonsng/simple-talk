@@ -3,6 +3,7 @@ import "./globals.css";
 import React from "react";
 import { alumniSans } from "@/lib/font";
 import DarkModeIcon from "@/components/dark-mode-icon";
+import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
   title: "Simple Talk",
@@ -17,6 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${alumniSans.className} antialiased`}>
+        <Toaster />
         <DarkModeIcon />
         {children}
       </body>
