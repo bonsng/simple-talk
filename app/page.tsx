@@ -1,5 +1,3 @@
-import { Button } from "@/components/ui/button";
-import DarkModeIcon from "@/components/dark-mode-icon";
 import Link from "next/link";
 
 export default function Home() {
