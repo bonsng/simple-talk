@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import React from "react";
 import { alumniSans } from "@/lib/font";
-import DarkModeIcon from "@/components/dark-mode-icon";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/theme-provider";
+import { ModeToggle } from "@/components/dark-mode-icon";
 
 export const metadata: Metadata = {
   title: "Simple Talk",
@@ -16,11 +17,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${alumniSans.className} antialiased`}>
         <Toaster />
-        <DarkModeIcon />
-        {children}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <ModeToggle />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

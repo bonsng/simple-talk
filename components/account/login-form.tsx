@@ -1,3 +1,4 @@
+"use client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,11 +10,29 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { useActionState, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useFormStatus } from "react-dom";
+import { authenticate } from "@/backend/account-action";
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const [email, setEmail] = useState("");
+  const [errorMessage, dispatch] = useActionState(authenticate, undefined);
+  const searchParams = useSearchParams();
+  const signup = searchParams.get("signup");
+  const signupEmail = searchParams.get("email");
+
+  const { pending } = useFormStatus();
+
+  useEffect(() => {
+    if (signup === "success" && signupEmail) {
+      setEmail(signupEmail);
+    }
+  }, [signup, signupEmail]);
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="dark:bg-card-foreground dark:border-none dark:text-secondary">
@@ -21,7 +40,7 @@ export function LoginForm({
           <CardTitle className="text-xl">Welcome back</CardTitle>
         </CardHeader>
         <CardContent>
-          <form>
+          <form action={dispatch}>
             <FieldGroup>
               <Field className="dark:text-primary-foreground">
                 <FieldLabel htmlFor="email" className="font-bold text-md">
@@ -30,9 +49,12 @@ export function LoginForm({
                 <Input
                   id="email"
                   type="email"
+                  name="email"
                   placeholder="m@example.com"
                   className="dark:text-white font-bold"
                   required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </Field>
               <Field className="dark:text-primary-foreground">
@@ -47,10 +69,25 @@ export function LoginForm({
                     Forgot your password?
                   </a>
                 </div>
-                <Input id="password" type="password" required />
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  name="password"
+                  minLength={8}
+                />
+                {errorMessage && (
+                  <FieldDescription className="text-red-500 font-bold">
+                    {errorMessage}
+                  </FieldDescription>
+                )}
               </Field>
               <Field className="dark:text-primary-foreground">
-                <Button type="submit" className="font-extrabold">
+                <Button
+                  type="submit"
+                  className="font-extrabold"
+                  aria-disabled={pending}
+                >
                   Login
                 </Button>
                 <FieldDescription className="text-center font-bold dark:text-primary-foreground">

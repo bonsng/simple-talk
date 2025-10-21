@@ -1,14 +1,19 @@
 import Link from "next/link";
+import { alumniSansPinstripe } from "@/lib/font";
 
 export default function Home() {
   return (
-    <main className="flex flex-col min-h-screen p-4 bg-gray-50 dark:bg-neutral-950">
+    <main className="flex flex-col min-h-screen p-4  dark:bg-primary">
       <div className="flex flex-col items-center justify-center flex-grow dark:text-white pb-16">
-        <div className="text-5xl md:text-8xl">
-          Simple Talk<span className="animate-blink">|</span>
+        <div
+          className={`text-5xl md:text-8xl ${alumniSansPinstripe.className}`}
+        >
+          Simple Talk<span className="animate-blink pb-10">|</span>
         </div>
-        <p className="text-xl md:text-3xl font-bold">
-          web socket based simple chat service
+        <p
+          className={`text-xl md:text-4xl font-extrabold ${alumniSansPinstripe.className} italic`}
+        >
+          simple web socket based chat service
         </p>
         <Link
           href="/login"
