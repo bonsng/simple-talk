@@ -19,7 +19,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${alumniSans.className} antialiased`}>
-        <Toaster />
+        <Toaster position="top-center" />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

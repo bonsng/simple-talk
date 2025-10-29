@@ -21,6 +21,16 @@ export async function getUser(email: string): Promise<User | undefined> {
   }
 }
 
+export async function getUserByName(name: string): Promise<string> {
+  try {
+    const user = await sql<User>`SELECT * FROM users WHERE name=${name}`;
+    return user.rows[0].id || "";
+  } catch (e) {
+    console.error("Failed to fetch user:", e);
+    throw new Error("Failed to fetch user.");
+  }
+}
+
 const EmailSchema = z.string();
 const PasswordSchema = z
   .string()
