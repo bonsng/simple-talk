@@ -26,7 +26,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { ChangeEvent, useCallback, useState } from "react";
+import { getInitials } from "@/lib/get-initial";
+import { useDebounceCallback } from "@/hooks/use-debounce-callback";
+import { Skeleton } from "@/components/ui/skeleton";
 export default function AddFriendButton() {
   const [open, setOpen] = React.useState(false);
   const isDesktop = useMediaQuery("(min-width: 768px)");
@@ -46,7 +49,7 @@ export default function AddFriendButton() {
               Enter your friend’s name to send a request.
             </DialogDescription>
           </DialogHeader>
-          <ProfileForm setOpen={setOpen} />
+          <ProfileForm />
         </DialogContent>
       </Dialog>
     );
@@ -63,10 +66,10 @@ export default function AddFriendButton() {
         <DrawerHeader className="text-left">
           <DialogTitle>New Contact</DialogTitle>
           <DialogDescription>
-            Enter your friend’s email to send a request.
+            Enter your friend’s name to send a request.
           </DialogDescription>
         </DrawerHeader>
-        <ProfileForm className="px-4" setOpen={setOpen} />
+        <ProfileForm className="px-4" />
         <DrawerFooter className="pt-2">
           <DrawerClose asChild>
             <Button variant="outline">Cancel</Button>
@@ -77,25 +80,89 @@ export default function AddFriendButton() {
   );
 }
 
-function ProfileForm({
-  className,
-  setOpen,
-}: React.ComponentProps<"form"> & { setOpen?: (value: boolean) => void }) {
-  const [requestName, setRequestName] = useState("");
+type SearchResult = {
+  id: string;
+  name: string;
+  email: string;
+};
 
-  async function sendRequest(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!requestName.trim()) return;
+function ProfileForm({ className }: React.ComponentProps<"div">) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [result, setResult] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
 
+  const performSearch = useCallback(async (term: string) => {
+    if (!term.trim()) {
+      setResult([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const res = await fetch(`/api/search?term=${term.toLowerCase()}`, {
+      method: "GET",
+    });
+    if (!res.ok) throw new Error("Failed to load users");
+    const data = await res.json();
+    setResult(data ?? []);
+    setLoading(false);
+  }, []);
+
+  const debouncedSearch = useDebounceCallback(performSearch, 300);
+
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    debouncedSearch(value);
+  };
+  return (
+    <div className={cn("grid items-start gap-6", className)}>
+      <div className="grid gap-3">
+        <Label htmlFor="name">Search by Username</Label>
+        <Input
+          type="text"
+          id="name"
+          placeholder="Enter username to search"
+          value={searchTerm}
+          onChange={handleInputChange}
+        />
+      </div>
+      <div>
+        <p>Search Result</p>
+        <div className="border h-52 rounded-lg p-2 overflow-y-auto justify-center items-center flex-col">
+          {!loading && result.length === 0 && (
+            <div className="w-full h-full flex justify-center items-center">
+              No Result
+            </div>
+          )}
+          {loading && (
+            <>
+              <SearchSkeleton />
+              <SearchSkeleton />
+            </>
+          )}
+
+          {!loading &&
+            result.map((user) => (
+              <SearchResultCard key={user.id} props={user} />
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SearchResultCard({ props }: { props: SearchResult }) {
+  const [requestSuccess, setRequestSuccess] = useState<boolean>(false);
+  async function sendRequest(name: string) {
     try {
       const res = await fetch("/api/contacts/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: requestName }),
+        body: JSON.stringify({ name }),
       });
       if (!res.ok) throw new Error("Failed to send request");
       toast.success("Friend request sent!");
-      setOpen?.(false);
+      setRequestSuccess(true);
       console.log("Request sent successfully!");
     } catch (err) {
       console.error("Error sending request:", err);
@@ -103,23 +170,50 @@ function ProfileForm({
   }
 
   return (
-    <form
-      onSubmit={sendRequest}
-      className={cn("grid items-start gap-6", className)}
+    <div
+      key={props.id}
+      className="rounded-lg border p-1 shadow-sm bg-background flex justify-between mb-3"
     >
-      <div className="grid gap-3">
-        <Label htmlFor="name">Username</Label>
-        <Input
-          type="text"
-          id="name"
-          placeholder="Enter Username."
-          value={requestName}
-          onChange={(e) => setRequestName(e.target.value)}
-        />
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border text-sm font-semibold">
+          {getInitials(props.name)}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate font-medium">{props.name}</p>
+          <p className="truncate text-sm text-muted-foreground">
+            {props.email}
+          </p>
+        </div>
       </div>
-      <Button type="submit" disabled={requestName.trim().length === 0}>
-        Send Request
-      </Button>
-    </form>
+      <div className="flex items-center gap-2">
+        {requestSuccess ? (
+          <Button disabled={requestSuccess} className="w-16">
+            Sent
+          </Button>
+        ) : (
+          <Button
+            onClick={() => sendRequest(props.name)}
+            variant="outline"
+            className="w-16"
+          >
+            Request
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function SearchSkeleton() {
+  return (
+    <div className="rounded-lg border p-1 shadow-sm bg-background mb-3">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-12 w-12 rounded-full" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-[250px]" />
+          <Skeleton className="h-4 w-[200px]" />
+        </div>
+      </div>
+    </div>
   );
 }

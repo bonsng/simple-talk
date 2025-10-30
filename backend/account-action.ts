@@ -10,6 +10,7 @@ import { redirect } from "next/navigation";
 import { signIn, signOut } from "@/auth";
 import { AuthError } from "next-auth";
 import { unstable_noStore as noStore } from "next/cache";
+import { auth } from "@/auth";
 
 export async function getUser(email: string): Promise<User | undefined> {
   try {
@@ -28,6 +29,38 @@ export async function getUserByName(name: string): Promise<string> {
   } catch (e) {
     console.error("Failed to fetch user:", e);
     throw new Error("Failed to fetch user.");
+  }
+}
+
+export async function searchUsersByName(query: string | null) {
+  if (!query || query.trim().length === 0) return [];
+  try {
+    const session = await auth();
+    const currentEmail = session?.user?.email;
+    const me = await sql`SELECT id FROM users WHERE email = ${currentEmail}`;
+    const myId = me.rows[0]?.id;
+    const { rows } = await sql<User>`
+      SELECT id, name, email
+      FROM users
+      WHERE
+        name ILIKE ${"%" + query + "%"}
+        AND email != ${currentEmail}
+        AND id NOT IN (
+          SELECT CASE
+            WHEN requester_id = ${myId} THEN addressee_id
+            ELSE requester_id
+          END
+          FROM friendships
+          WHERE (requester_id = ${myId} OR addressee_id = ${myId})
+            AND status = 'accepted'
+        )
+      ORDER BY name ASC
+      LIMIT 10;
+    `;
+    return rows;
+  } catch (e) {
+    console.error("Failed to search users:", e);
+    throw new Error("Failed to search users.");
   }
 }
 
@@ -112,10 +145,5 @@ export async function fetchLoggedInUser(email: string) {
 
 export async function performLogout() {
   "use server";
-  try {
-    await signOut();
-    console.log("successfully logged out");
-  } catch (error) {
-    console.error(error);
-  }
+  await signOut({ redirectTo: "/" });
 }
