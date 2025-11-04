@@ -1,11 +1,9 @@
 "use server";
 import { sql } from "@vercel/postgres";
-
-import { auth } from "@/auth";
-import { getUser } from "@/backend/account-action";
+import { requireUserId, UUID } from "@/backend/account-action";
 
 // Basic types
-export type UUID = string;
+
 export type FriendStatus = "pending" | "accepted" | "rejected" | "cancelled";
 
 export type FriendshipRow = {
@@ -29,16 +27,6 @@ type FriendListRow = {
   requested_at: string | null;
   accepted_at: string | null;
 };
-
-// Utility: require authenticated user and return their id
-async function requireUserId(): Promise<UUID> {
-  const session = await auth();
-  const user = await getUser(session?.user?.email || "");
-  if (!user?.id) {
-    throw new Error("Unauthorized");
-  }
-  return user.id as UUID;
-}
 
 // ---- Friends Core Actions -------------------------------------------------
 

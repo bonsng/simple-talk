@@ -12,7 +12,10 @@ import React from "react";
 
 export default function DynamicBreadcrumbs() {
   const pathname = usePathname();
-  const segments = pathname.split("/").filter(Boolean);
+  const segments = pathname
+    .split("/")
+    .filter(Boolean)
+    .filter((value) => value !== "t");
 
   return (
     <Breadcrumb>

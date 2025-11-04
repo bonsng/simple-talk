@@ -11,6 +11,17 @@ import { signIn, signOut } from "@/auth";
 import { AuthError } from "next-auth";
 import { unstable_noStore as noStore } from "next/cache";
 import { auth } from "@/auth";
+export type UUID = string;
+
+// Utility: require authenticated user and return their id
+export async function requireUserId(): Promise<UUID> {
+  const session = await auth();
+  const user = await getUser(session?.user?.email || "");
+  if (!user?.id) {
+    throw new Error("Unauthorized");
+  }
+  return user.id as UUID;
+}
 
 export async function getUser(email: string): Promise<User | undefined> {
   try {

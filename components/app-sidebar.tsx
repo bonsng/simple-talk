@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import type { Session } from "next-auth";
 import Link from "next/link";
+import { useEffect } from "react";
 
 export type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   session: Session | null;
@@ -45,7 +46,11 @@ export function AppSidebar({ session, ...props }: AppSidebarProps) {
   // Note: I'm using state to show active item.
   // IRL you should use the url/router.
   const [activeItem, setActiveItem] = React.useState("");
-  const { setOpenMobile } = useSidebar();
+  const { setOpenMobile, setOpen } = useSidebar();
+
+  useEffect(() => {
+    if (activeItem.toLowerCase() === "chat") setOpen(false);
+  }, [activeItem, setOpen]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
