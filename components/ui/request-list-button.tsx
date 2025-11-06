@@ -36,8 +36,12 @@ export default function RequestListButton() {
       if (!res.ok) throw new Error("Failed to load requests");
       const data = await res.json();
       setRequests(data ?? []);
-    } catch (e: any) {
-      setError(e?.message ?? "Unknown error");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError("Unknown error");
+      }
     }
   }, []);
 
@@ -55,7 +59,7 @@ export default function RequestListButton() {
       if (!res.ok) throw new Error("Failed to accept request");
       toast.success("Friend request accepted!");
       await load();
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
     }
   };
@@ -70,7 +74,7 @@ export default function RequestListButton() {
       if (!res.ok) throw new Error("Failed to reject request");
       toast.success("Friend request rejected!");
       await load();
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
     }
   };

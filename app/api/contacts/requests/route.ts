@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { listPendingRequests } from "@/backend/contact-action";
+import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   try {
@@ -10,10 +10,17 @@ export async function GET(req: Request) {
       | "all";
 
     const result = await listPendingRequests(type);
-
     return NextResponse.json(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err);
-    return NextResponse.json({ error: err.message }, { status: 400 });
+
+    if (err instanceof Error) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+
+    return NextResponse.json(
+      { error: "Unknown error occurred" },
+      { status: 400 },
+    );
   }
 }

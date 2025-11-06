@@ -6,8 +6,16 @@ export async function POST(req: Request) {
     const { friendshipId } = await req.json();
     const result = await rejectFriendRequest(friendshipId);
     return NextResponse.json(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err);
-    return NextResponse.json({ error: err.message }, { status: 400 });
+
+    if (err instanceof Error) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+
+    return NextResponse.json(
+      { error: "Unknown error occurred" },
+      { status: 400 },
+    );
   }
 }

@@ -5,8 +5,14 @@ export async function GET() {
   try {
     const friends = await listFriends();
     return NextResponse.json(friends);
-  } catch (err: any) {
-    console.error(err);
-    return NextResponse.json({ error: err.message }, { status: 400 });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+
+    return NextResponse.json(
+      { error: "Unknown error occurred" },
+      { status: 400 },
+    );
   }
 }
