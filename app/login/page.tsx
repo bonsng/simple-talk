@@ -39,7 +39,9 @@ export default function LoginPage() {
           </div>
           Simple Chat.
         </Link>
-        <LoginForm />
+        <Suspense fallback={null}>
+          <LoginForm />
+        </Suspense>
       </div>
     </div>
   );
