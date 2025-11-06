@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import ChatHeader from "@/components/ui/chat-header";
 import TextareaAutosize from "react-textarea-autosize";
 import { clsx } from "clsx";
+import { makePusherClient } from "@/lib/pusher";
 
 export default function Page() {
   const { id } = useParams();
@@ -27,6 +28,31 @@ export default function Page() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    const pusher = makePusherClient();
+    const channelName = `conversation-${Number(id)}`;
+    const channel = pusher.subscribe(channelName);
+
+    const onNew = (msg: SentMessage) => {
+      // avoid duplicate for my own messages (already appended on POST response)
+      if (meId && msg.senderId === meId) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      requestAnimationFrame(() => scrollToBottom(true));
+    };
+
+    channel.bind("message:new", onNew);
+
+    return () => {
+      channel.unbind("message:new", onNew);
+      pusher.unsubscribe(channelName);
+      pusher.disconnect();
+    };
+  }, [id, meId]);
 
   const scrollToBottom = (smooth = false) => {
     const el = listRef.current;

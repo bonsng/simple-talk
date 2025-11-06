@@ -1,6 +1,7 @@
 "use server";
 import { sql } from "@vercel/postgres";
 import { requireUserId, UUID } from "@/backend/account-action";
+import { pusherServer } from "@/lib/pusher";
 
 /**
  * Create or fetch a direct conversation id with the given user.
@@ -140,6 +141,14 @@ export async function sendTextMessage(
     WHERE conversation_id = ${conversationId} AND user_id = ${me}::uuid;
 `;
 
+  await pusherServer.trigger(`conversation-${conversationId}`, "message:new", {
+    id: newId,
+    conversationId,
+    senderId: me,
+    body: text,
+    createdAt,
+  });
+
   return {
     id: newId,
     conversationId,
@@ -232,4 +241,70 @@ export async function listMessages(
   const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
 
   return { items, nextCursor };
+}
+
+/**
+ * List my direct conversations with chat preview
+ */
+
+export type ConversationPreview = {
+  conversationId: number;
+  otherUserId: UUID;
+  otherUserName: string;
+  otherUserEmail: string;
+  lastMessageId: number | null;
+  lastMessageBody: string | null;
+  lastMessageAt: string | null;
+};
+
+export async function listMyDirectChats(opts?: {
+  limit?: number;
+  offset?: number;
+}): Promise<ConversationPreview[]> {
+  const me = await requireUserId();
+  const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
+  const offset = Math.max(opts?.offset ?? 0, 0);
+
+  const { rows } = await sql<{
+    conversation_id: number;
+    other_user_id: UUID;
+    other_user_name: string;
+    other_user_email: string;
+    last_message_id: number | null;
+    last_message_body: string | null;
+    last_message_at: string | null;
+  }>`
+    SELECT 
+      c.id AS conversation_id,
+      u.id AS other_user_id,
+      u.name AS other_user_name,
+      u.email AS other_user_email,
+      lm.id AS last_message_id,
+      lm.body AS last_message_body,
+      lm.created_at AS last_message_at
+    FROM conversation_participants p
+    JOIN conversations c ON c.id = p.conversation_id
+    JOIN conversation_participants po ON po.conversation_id = c.id AND po.user_id <> p.user_id
+    JOIN users u ON u.id = po.user_id
+    LEFT JOIN LATERAL ( 
+      SELECT m.id, m.body, m.created_at
+      FROM messages m 
+      WHERE m.conversation_id = c.id
+      ORDER BY m.id DESC 
+      LIMIT 1
+      ) lm ON TRUE
+    WHERE p.user_id = ${me}::uuid AND c.type = 'direct'
+    ORDER BY COALESCE(lm.created_at, c.updated_at) DESC NULLS LAST
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+
+  return rows.map((r) => ({
+    conversationId: r.conversation_id,
+    otherUserId: r.other_user_id,
+    otherUserName: r.other_user_name,
+    otherUserEmail: r.other_user_email,
+    lastMessageId: r.last_message_id,
+    lastMessageBody: r.last_message_body,
+    lastMessageAt: r.last_message_at,
+  }));
 }

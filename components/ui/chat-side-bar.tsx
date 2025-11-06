@@ -1,12 +1,12 @@
 import { Input } from "@/components/ui/input";
 import { auth } from "@/auth";
-import { MessageCircle } from "lucide-react";
 import SendMessageDrawer from "@/components/ui/send-message-drawer";
+import ConversationsList from "@/components/ui/conversations-list";
 
 export default async function ChatSideBar() {
   const session = await auth();
   return (
-    <div className="flex h-full min-h-0 flex-col border border-white">
+    <div className="flex h-full min-h-0 flex-col">
       {/*header part*/}
       <div className="flex flex-col p-5 gap-4">
         <div className="flex w-full items-center justify-between">
@@ -21,18 +21,10 @@ export default async function ChatSideBar() {
         <Input placeholder="Type to search..." />
       </div>
       <div className="border-b px-5 py-2 text-lg">Messages</div>
+
       {/*chat list part*/}
-      <div className="flex flex-1 items-center justify-center p-6 text-center">
-        <div>
-          <div className="flex justify-center mb-3">
-            <MessageCircle size={50} />
-          </div>
-          <h1 className="text-xl font-semibold">Your messages</h1>
-          <p className="text-muted-foreground">
-            Send a message to start a chat.
-          </p>
-          <SendMessageDrawer type={"button"} />
-        </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+        <ConversationsList />
       </div>
     </div>
   );
