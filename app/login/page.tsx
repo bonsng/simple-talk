@@ -2,11 +2,11 @@
 import { MessageCircle } from "lucide-react";
 import { LoginForm } from "@/components/account/login-form";
 import Link from "next/link";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
-export default function LoginPage() {
+function SignupToast() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -20,8 +20,15 @@ export default function LoginPage() {
     }
   }, [searchParams]);
 
+  return null;
+}
+
+export default function LoginPage() {
   return (
     <div className="bg-muted dark:bg-primary flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
+      <Suspense fallback={null}>
+        <SignupToast />
+      </Suspense>
       <div className="flex w-full max-w-sm flex-col gap-6">
         <Link
           href="/"
