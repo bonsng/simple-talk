@@ -1,29 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { ConversationPreview } from "@/backend/chat-action";
 import { MessageCircle } from "lucide-react";
 import SendMessageDrawer from "@/components/ui/send-message-drawer";
 import Link from "next/link";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+
+async function fetchConversations(): Promise<ConversationPreview[]> {
+  const res = await fetch("/api/chat/direct/list", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch conversation list");
+  const data = await res.json();
+  return data.items ?? [];
+}
 
 export default function ConversationsList() {
-  const [chatList, setChatList] = useState<ConversationPreview[] | null>(null);
+  const { data: chatList, isLoading } = useQuery({
+    queryKey: ["conversation-list"],
+    queryFn: fetchConversations,
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
 
-  const loadChatList = async () => {
-    const res = await fetch("/api/chat/direct/list", {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("failed to fetch list");
-    const data = await res.json();
-    const conversations = data.items ?? null;
-    setChatList(conversations);
-  };
+  if (!chatList && isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center mt-12">
+        <MessageCircle size={50} className="mb-3" />
+        <h1 className="text-xl font-semibold">Your messages</h1>
+        <p className="text-muted-foreground mb-3">
+          Loading your conversations...
+        </p>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    loadChatList();
-  }, []);
-
-  if (!chatList || !chatList?.length) {
+  if (!chatList || chatList.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center mt-12">
         <MessageCircle size={50} className="mb-3" />

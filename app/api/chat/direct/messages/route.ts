@@ -25,15 +25,17 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cid = Number(searchParams.get("cid"));
-  const cursor = searchParams.get("cursor");
-  const limit = searchParams.get("limit");
+  const totalPage = Number(searchParams.get("total"));
+  const pageNumber = Number(searchParams.get("page"));
+  const totalCount = Number(searchParams.get("count"));
   if (!cid || Number.isNaN(cid)) {
     return NextResponse.json({ error: "Invalid cid" }, { status: 400 });
   }
 
   const data = await listMessages(cid, {
-    cursor: cursor ? Number(cursor) : undefined,
-    limit: limit ? Number(limit) : undefined,
+    totalPages: totalPage,
+    page: pageNumber,
+    totalCount,
   });
 
   if (!data) throw new Error("failed to fetch messages");

@@ -5,6 +5,7 @@ import { alumniSans } from "@/lib/font";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ModeToggle } from "@/components/dark-mode-icon";
+import { QueryProvider } from "@/providers/query-provider";
 
 export const metadata: Metadata = {
   title: "Simple Talk",
@@ -27,7 +28,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <ModeToggle />
-          {children}
+          <QueryProvider>{children}</QueryProvider>
         </ThemeProvider>
       </body>
     </html>

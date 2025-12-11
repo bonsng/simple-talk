@@ -1,34 +1,59 @@
 "use client";
 import { useParams } from "next/navigation";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SentMessage } from "@/backend/chat-action";
+import React, { useEffect, useRef, useState } from "react";
+import { useQueryClient, InfiniteData } from "@tanstack/react-query";
+import { SentMessage, type ListRes } from "@/backend/chat-action";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import ChatHeader from "@/components/ui/chat-header";
 import TextareaAutosize from "react-textarea-autosize";
 import { clsx } from "clsx";
 import { makePusherClient } from "@/lib/pusher";
+import { formatDateLabel, isSameDay } from "@/lib/date-functions";
+import { useChatList } from "@/hooks/use-chat-list";
+import { useSendMessage } from "@/hooks/use-send-message";
+import { useMe } from "@/hooks/use-me";
+import { useChatMeta } from "@/hooks/use-chat-meta";
+import { useChatScroll } from "@/hooks/use-chat-scroll";
 
 export default function Page() {
   const { id } = useParams();
-  const [messages, setMessages] = useState<SentMessage[]>([]);
-  const [cursor, setCursor] = useState<number | null>(null);
   const [input, setInput] = useState("");
-  const [sendLoading, setSendLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [meId, setMeId] = useState<string | null>(null);
+  const { meId } = useMe();
   const listRef = useRef<HTMLDivElement | null>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    (async () => {
-      const { id } = await fetch("/api/search/me").then((r) => r.json());
-      if (id) {
-        setMeId(id);
-      }
-    })();
-  }, []);
+  /**
+   * Message load
+   */
+  const {
+    totalPages: lastPage,
+    totalCount: messageCount,
+    isLoading: isTotalLoading,
+  } = useChatMeta(id);
 
+  const {
+    messages,
+    isFetching,
+    isFetchingPreviousPage,
+    hasPreviousPage,
+    fetchPreviousPage,
+  } = useChatList(String(id), lastPage, messageCount);
+
+  const initialLoading = isTotalLoading || isFetching;
+
+  const { observerRef, scrollToBottom } = useChatScroll({
+    listRef,
+    messages,
+    initialLoading,
+    hasPreviousPage,
+    isFetchingPreviousPage,
+    fetchPreviousPage,
+  });
+
+  /**
+   * Pusher connection
+   */
   useEffect(() => {
     if (!id) return;
     const pusher = makePusherClient();
@@ -36,12 +61,47 @@ export default function Page() {
     const channel = pusher.subscribe(channelName);
 
     const onNew = (msg: SentMessage) => {
-      // avoid duplicate for my own messages (already appended on POST response)
+      // 내가 보낸 메시지는 useSendMessage 쪽에서 이미 캐시에 반영된다고 가정
       if (meId && msg.senderId === meId) return;
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
+
+      // 1) 현재 대화의 메시지 리스트 캐시에 새 메시지를 추가
+      queryClient.setQueryData<InfiniteData<ListRes>>(
+        ["conversation", String(id), "messages"],
+        (old) => {
+          if (!old) return old;
+
+          const newPages = [...old.pages];
+          if (newPages.length === 0) {
+            return {
+              pages: [
+                {
+                  items: [msg],
+                  nowPageNumber: 1,
+                  totalPages: 1,
+                  totalCount: 1,
+                },
+              ],
+              pageParams: [1],
+            };
+          }
+
+          const lastIndex = newPages.length - 1;
+          const lastPage = newPages[lastIndex] as ListRes;
+
+          newPages[lastIndex] = {
+            ...lastPage,
+            items: [...lastPage.items, msg],
+            totalCount: lastPage.totalCount + 1,
+          };
+
+          return {
+            ...old,
+            pages: newPages,
+          };
+        },
+      );
+
+      // 2) 화면을 맨 아래로 스크롤
       requestAnimationFrame(() => scrollToBottom(true));
     };
 
@@ -52,147 +112,36 @@ export default function Page() {
       pusher.unsubscribe(channelName);
       pusher.disconnect();
     };
-  }, [id, meId]);
+  }, [id, meId, scrollToBottom, queryClient]);
 
-  const scrollToBottom = (smooth = false) => {
-    const el = listRef.current;
-    if (!el) return;
-    // ensure layout is settled before measuring
-    requestAnimationFrame(() => {
-      const target = Math.max(0, el.scrollHeight - el.clientHeight);
-      el.scrollTo({ top: target, behavior: smooth ? "smooth" : "auto" });
-    });
-  };
+  /**
+   * Send Logics
+   */
+  const { mutate, isPending: isSendPending } = useSendMessage(String(id), {
+    onSent: () => scrollToBottom(true),
+  });
 
-  const isSameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
-
-  const formatDateLabel = (d: Date) => {
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
-    if (isSameDay(d, today)) return "Today";
-    if (isSameDay(d, yesterday)) return "Yesterday";
-    return d.toLocaleDateString([], {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  type ListRes = { items: SentMessage[]; nextCursor: number | null };
-
-  const loadInitial = useCallback(async () => {
-    if (!id) return;
-    try {
-      setInitialLoading(true);
-      const res = await fetch(
-        `/api/chat/direct/messages?cid=${Number(id)}&limit=20`,
-        { cache: "no-store" },
-      );
-      if (!res.ok) throw new Error("Failed to load messages");
-      const data: ListRes = await res.json();
-      setMessages(data.items);
-      setCursor(data.nextCursor);
-
-      requestAnimationFrame(() => scrollToBottom(false));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setInitialLoading(false);
-    }
-  }, [id]);
-
-  const loadMore = useCallback(async () => {
-    if (!id || !cursor) return;
-    try {
-      setLoadingMore(true);
-      const res = await fetch(
-        `/api/chat/direct/messages?cid=${Number(id)}&cursor=${cursor}&limit=20`,
-        { cache: "no-store" },
-      );
-      if (!res.ok) throw new Error("Failed to load messages");
-      const data: ListRes = await res.json();
-      setMessages((prev) => [...data.items, ...prev]);
-      setCursor(data.nextCursor);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [id, cursor]);
-
-  useEffect(() => {
-    setMessages([]);
-    setCursor(null);
-    loadInitial();
-  }, [loadInitial]);
-
-  const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
+  const sendMessage = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setSendLoading(true);
     const text = input.trim();
-    if (!text) {
-      setSendLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/chat/direct/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: Number(id),
-          body: text,
-        }),
-      });
-
-      if (!res.ok) {
-        const { error } = await res.json();
-        throw new Error(error || "Failed to send message");
-      }
-
-      const data: SentMessage = await res.json();
-      setMessages((prev) => [...prev, data]);
-      setInput("");
-      // scroll to bottom so the new message is visible
-      requestAnimationFrame(() => scrollToBottom(true));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSendLoading(false);
-    }
+    if (!text || !id) return;
+    mutate(text);
+    setInput("");
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden p-4">
+    <div
+      className="flex h-full flex-col overflow-hidden p-4"
+      id="chat-container"
+    >
       <ChatHeader id={String(id)} />
 
       {/*chat contents*/}
       <div
         ref={listRef}
         className="flex-1 min-h-0 overflow-y-auto space-y-2 p-4"
+        id="chat-contents-container"
       >
-        <div className="flex justify-center">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={initialLoading || loadingMore || !cursor}
-            onClick={loadMore}
-          >
-            {initialLoading
-              ? "Loading..."
-              : cursor
-                ? loadingMore
-                  ? "Loading more..."
-                  : "Load older messages"
-                : "No more messages"}
-          </Button>
-        </div>
-
         {messages.length === 0 && !initialLoading ? (
           <p className="text-muted-foreground text-sm text-center">
             No messages yet. Start chatting!
@@ -204,8 +153,14 @@ export default function Page() {
             const showSeparator =
               idx === 0 || !isSameDay(d, new Date(prev.createdAt));
             const isMe = meId === msg.senderId;
+            const isFirst = idx === 0;
             return (
               <React.Fragment key={msg.id}>
+                {isFirst && hasPreviousPage && !initialLoading && (
+                  <div ref={observerRef} className="flex justify-center">
+                    {isFetchingPreviousPage && <Spinner className="size-3" />}
+                  </div>
+                )}
                 {showSeparator && (
                   <div className="my-3 flex items-center text-xs text-muted-foreground">
                     <div className="h-px flex-1 bg-border" />
@@ -258,15 +213,33 @@ export default function Page() {
           placeholder="Type a message..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              const native = e.nativeEvent as unknown as {
+                isComposing?: boolean;
+                keyCode?: number;
+              };
+              const isComposing = native.isComposing || native.keyCode === 229;
+              // 한글 등 IME 조합 중에는 전송하지 않기
+              if (isComposing) return;
+
+              e.preventDefault();
+              const text = input.trim();
+              if (text && id) {
+                mutate(text);
+                setInput("");
+              }
+            }
+          }}
         />
         <div className="px-3 py-2 flex justify-end items-end flex-1">
           <Button
             type="submit"
             variant="outline"
-            disabled={sendLoading}
+            disabled={isSendPending}
             className="w-14"
           >
-            {sendLoading ? <Spinner /> : "Send"}
+            {isSendPending ? <Spinner /> : "Send"}
           </Button>
         </div>
       </form>

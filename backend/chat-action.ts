@@ -170,17 +170,68 @@ export type FetchedMessage = {
   createdAt: string;
 };
 
+export type ListRes = {
+  items: SentMessage[];
+  nowPageNumber: number; // 현재 페이지 번호 (1 기반)
+  totalPages: number;
+  totalCount: number;
+};
+
+const PAGE_SIZE = 25;
+
 export async function listMessages(
   conversationId: number,
-  opts?: { cursor?: number; limit?: number },
-): Promise<{ items: FetchedMessage[]; nextCursor: number | null }> {
+  opts?: { page?: number; totalPages?: number; totalCount?: number },
+): Promise<ListRes> {
+  let page = opts?.page ?? 1;
+  const totalPages = opts?.totalPages ?? 0;
+  const totalCount = opts?.totalCount ?? 0;
+  if (page < 1) page = 1;
+  if (totalPages > 0 && page > totalPages) page = totalPages;
+
+  const offset = totalPages === 0 ? 0 : (page - 1) * PAGE_SIZE;
+
+  const { rows } = await sql<{
+    id: number;
+    sender_id: UUID;
+    body: string | null;
+    created_at: string;
+  }>`
+    SELECT id, sender_id, body, created_at
+    FROM messages
+    WHERE conversation_id = ${conversationId}
+    ORDER BY id ASC
+    LIMIT ${PAGE_SIZE} OFFSET ${offset}
+`;
+
+  const items: FetchedMessage[] = rows.map((r) => ({
+    id: r.id,
+    conversationId,
+    senderId: r.sender_id,
+    body: r.body,
+    createdAt: r.created_at,
+  }));
+
+  return {
+    items,
+    nowPageNumber: totalPages === 0 ? 0 : page,
+    totalPages,
+    totalCount,
+  };
+}
+
+/**
+ * Get pagination meta (total pages & count) for a conversation.
+ * Useful for initial request to know which page number to load first.
+ */
+export async function getMessagePageMeta(
+  conversationId: number,
+): Promise<{ totalPages: number; totalCount: number }> {
   const me = await requireUserId();
   if (!conversationId || Number.isNaN(Number(conversationId)))
     throw new Error("Invalid Conversation id");
 
-  const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
-  const cursor = opts?.cursor ?? null;
-
+  // participant check
   const { rowCount } = await sql`
     SELECT 1 FROM conversation_participants
     WHERE conversation_id = ${conversationId} AND user_id = ${me}::uuid
@@ -189,58 +240,16 @@ export async function listMessages(
   if (!rowCount)
     throw new Error("You are not a participant of this conversation.");
 
-  let rows: {
-    id: number;
-    sender_id: UUID;
-    body: string | null;
-    created_at: string;
-  }[];
+  // count messages
+  const { rows: countRows } = await sql<{ cnt: number }>`
+    SELECT COUNT(*)::int AS cnt
+    FROM messages
+    WHERE conversation_id = ${conversationId};
+  `;
+  const totalCount = countRows[0]?.cnt ?? 0;
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / PAGE_SIZE);
 
-  if (cursor) {
-    const res = await sql<{
-      id: number;
-      sender_id: UUID;
-      body: string | null;
-      created_at: string;
-    }>`
-      SELECT id, sender_id, body, created_at
-      FROM messages
-      WHERE conversation_id = ${conversationId}
-        AND id < ${cursor}
-      ORDER BY id DESC
-      LIMIT ${limit};
-    `;
-    rows = res.rows;
-  } else {
-    const res = await sql<{
-      id: number;
-      sender_id: UUID;
-      body: string | null;
-      created_at: string;
-    }>`
-      SELECT id, sender_id, body, created_at
-      FROM messages
-      WHERE conversation_id = ${conversationId}
-      ORDER BY id DESC
-      LIMIT ${limit};
-    `;
-    rows = res.rows;
-  }
-
-  const items: FetchedMessage[] = rows
-    .slice()
-    .reverse()
-    .map((r) => ({
-      id: r.id,
-      conversationId,
-      senderId: r.sender_id,
-      body: r.body,
-      createdAt: r.created_at,
-    }));
-
-  const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
-
-  return { items, nextCursor };
+  return { totalPages, totalCount };
 }
 
 /**
